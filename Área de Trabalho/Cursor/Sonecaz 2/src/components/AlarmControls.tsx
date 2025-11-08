@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { Bell, BellOff, MapPin, Radio } from 'lucide-react';
+import { Bell, BellOff, MapPin, Radio, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AddressSearch from '@/components/AddressSearch';
 
@@ -9,12 +9,14 @@ interface AlarmControlsProps {
   isActive: boolean;
   radius: number;
   destination: [number, number] | null;
+  destinationAddress?: string;
   onToggleAlarm: () => void;
   onRadiusChange: (value: number) => void;
   distance: number | null;
   onAddressSelect: (lat: number, lng: number, address: string) => void;
   onDestinationSelect?: (lat: number, lng: number, address: string) => void;
   onMapCenterChange: (lat: number, lng: number) => void;
+  onSaveFavorite?: () => void;
   mapCenter?: [number, number];
 }
 
@@ -22,12 +24,14 @@ const AlarmControls = ({
   isActive,
   radius,
   destination,
+  destinationAddress,
   onToggleAlarm,
   onRadiusChange,
   distance,
   onAddressSelect,
   onDestinationSelect,
   onMapCenterChange,
+  onSaveFavorite,
   mapCenter,
 }: AlarmControlsProps) => {
   return (
@@ -109,6 +113,18 @@ const AlarmControls = ({
             : "Arraste para ajustar a área de ativação"}
         </p>
       </div>
+
+      {/* Save Favorite Button */}
+      {!isActive && destination && destinationAddress && onSaveFavorite && (
+        <Button
+          onClick={onSaveFavorite}
+          variant="outline"
+          className="w-full"
+        >
+          <Star className="w-4 h-4 mr-2" />
+          Salvar como Favorito
+        </Button>
+      )}
 
       {/* Activate Button */}
       <Button

@@ -2,16 +2,25 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LocationMap from '@/components/LocationMap';
 import AlarmControls from '@/components/AlarmControls';
+import FavoritesPanel from '@/components/FavoritesPanel';
+import FavoriteModal from '@/components/FavoriteModal';
 import { toast } from 'sonner';
 import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { useLists } from '@/hooks/useLists';
 import { useSettings } from '@/hooks/useSettings';
+import { useFavorites, FavoriteDestination } from '@/hooks/useFavorites';
+import { useAlarmHistory } from '@/hooks/useAlarmHistory';
+import { useRecurringAlarms } from '@/hooks/useRecurringAlarms';
+import { useCommuteMode } from '@/hooks/useCommuteMode';
+import { usePlaceFilters } from '@/hooks/usePlaceFilters';
+import { useOfflineMode } from '@/hooks/useOfflineMode';
 import { checkNearbyRelevantPlaces } from '@/services/nearbyPlaces';
+import { PlaceCategory, getCategoryIcon, getCategoryName } from '@/types/places';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ListTodo, Bell, Settings, User } from 'lucide-react';
+import { ListTodo, Bell, Settings, User, Star, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/hooks/useProfile';
 
@@ -38,21 +47,34 @@ const calculateDistance = (
 
 const Index = () => {
   const navigate = useNavigate();
-  const { hasActiveShoppingItems } = useLists();
+  // Desestruturar getActiveCategories do hook useLists
+  const { hasActiveShoppingItems, getActiveCategories } = useLists();
   const { settings } = useSettings();
   const { profile, incrementAlarms, incrementShoppingAlerts, updateFavoriteRadius } = useProfile();
+  const { addFavorite, updateFavorite, incrementUseCount } = useFavorites();
+  const { addToHistory } = useAlarmHistory();
+  const { getActiveAlarmsForToday, alarms: recurringAlarms } = useRecurringAlarms();
+  const { settings: commuteSettings, isSilentModeActive } = useCommuteMode();
+  const { filters: placeFilters } = usePlaceFilters();
+  const { isOnline } = useOfflineMode();
   const [currentLocation, setCurrentLocation] = useState<[number, number]>([-23.5505, -46.6333]); // São Paulo default
   const [destination, setDestination] = useState<[number, number] | null>(null);
+  const [destinationAddress, setDestinationAddress] = useState<string>('');
+  const [startLocation, setStartLocation] = useState<[number, number]>([-23.5505, -46.6333]);
   const [radius, setRadius] = useState<number>(500); // Valor padrão inicial
   const [isAlarmActive, setIsAlarmActive] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
   const [watchId, setWatchId] = useState<number | string | null>(null);
   const [alarmTriggered, setAlarmTriggered] = useState(false);
   const [searchCenter, setSearchCenter] = useState<[number, number] | null>(null);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [showFavoriteModal, setShowFavoriteModal] = useState(false);
+  const [editingFavorite, setEditingFavorite] = useState<FavoriteDestination | undefined>();
   
   // Monitoramento de estabelecimentos próximos
   const nearbyWatchIdRef = useRef<number | string | null>(null);
   const lastAlertTimeRef = useRef<number>(0);
+  const alarmStartTimeRef = useRef<Date | null>(null);
 
   // Atualizar radius quando as configurações mudarem
   useEffect(() => {
@@ -144,8 +166,32 @@ const Index = () => {
   // Trigger alarm when destination is reached
   const triggerAlarm = useCallback(async () => {
     if (alarmTriggered) return;
+    
+    // Verificar modo silencioso
+    if (isSilentModeActive()) {
+      console.log('Modo silencioso ativo - alarme não será disparado');
+      return;
+    }
 
     setAlarmTriggered(true);
+    
+    // Calcular duração do alarme
+    const duration = alarmStartTimeRef.current
+      ? Math.round((Date.now() - alarmStartTimeRef.current.getTime()) / 60000) // em minutos
+      : undefined;
+
+    // Salvar no histórico
+    if (destination && destinationAddress) {
+      addToHistory({
+        destinationName: destinationAddress.split(',')[0] || 'Destino',
+        destinationAddress,
+        destinationLocation: destination,
+        startLocation,
+        radius,
+        distance: distance || 0,
+        duration,
+      });
+    }
     
     // Incrementar contador de alarmes
     incrementAlarms();
@@ -160,8 +206,8 @@ const Index = () => {
         }
       }
 
-      // Send notification (se habilitada)
-      if (settings.enableNotifications) {
+      // Send notification (se habilitada e não estiver em modo silencioso)
+      if (settings.enableNotifications && !isSilentModeActive()) {
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           // Usar API nativa do navegador
           new Notification('🔔 Sonecaz - Você chegou!', {
@@ -204,11 +250,12 @@ const Index = () => {
 
       // Auto-disable alarm
       setIsAlarmActive(false);
+      alarmStartTimeRef.current = null;
     } catch (error) {
       console.error('Error triggering alarm:', error);
       toast.error('Erro ao disparar alarme');
     }
-  }, [alarmTriggered, settings.enableHaptics, settings.enableNotifications, incrementAlarms]);
+  }, [alarmTriggered, settings.enableHaptics, settings.enableNotifications, isSilentModeActive, incrementAlarms, destination, destinationAddress, startLocation, radius, distance, addToHistory]);
 
   // Watch location when alarm is active
   useEffect(() => {
@@ -352,14 +399,17 @@ const Index = () => {
 
   // Função para disparar alerta de estabelecimento próximo
   const triggerNearbyAlert = useCallback(async (
-    type: 'supermarket' | 'pharmacy',
-    place: { name: string; address: string; distance: number }
+    type: PlaceCategory,
+    place: { name: string; address: string; distance: number; isOpen?: boolean }
   ) => {
-    const typeName = type === 'supermarket' ? 'supermercado' : 'farmácia';
-    const emoji = type === 'supermarket' ? '🛒' : '💊';
+    const typeName = getCategoryName(type);
+    const emoji = getCategoryIcon(type);
     const distanceText = place.distance >= 1000 
       ? `${(place.distance / 1000).toFixed(1)} km`
       : `${Math.round(place.distance)} m`;
+    const statusText = place.isOpen !== undefined 
+      ? (place.isOpen ? ' (Aberto)' : ' (Fechado)')
+      : '';
 
     try {
       // Haptic feedback (se habilitado)
@@ -371,8 +421,8 @@ const Index = () => {
         }
       }
 
-      // Notificação (se habilitada)
-      if (settings.enableNotifications) {
+      // Notificação (se habilitada e não estiver em modo silencioso)
+      if (settings.enableNotifications && !isSilentModeActive()) {
         // Notificação do navegador
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           new Notification(`${emoji} ${typeName} próximo!`, {
@@ -404,10 +454,10 @@ const Index = () => {
 
       // Toast visual
       toast.success(`${emoji} ${typeName} próximo!`, {
-        description: `${place.name} está a ${distanceText} de você.`,
+        description: `${place.name} está a ${distanceText} de você.${statusText}`,
         duration: 8000,
         style: {
-          background: type === 'supermarket' ? '#10B981' : '#8B5CF6',
+          background: place.isOpen === false ? '#6B7280' : '#10B981',
           color: 'white',
         },
       });
@@ -417,7 +467,7 @@ const Index = () => {
     } catch (error) {
       console.error('Error triggering nearby alert:', error);
     }
-  }, [settings.enableHaptics, settings.enableNotifications, incrementShoppingAlerts]);
+  }, [settings.enableHaptics, settings.enableNotifications, isSilentModeActive, incrementShoppingAlerts]);
 
   // Monitorar estabelecimentos próximos (independente do alarme principal)
   useEffect(() => {
@@ -439,11 +489,20 @@ const Index = () => {
       return;
     }
 
-    // Verificar se há itens ativos nas listas
-    const shoppingStatus = hasActiveShoppingItems();
+    // Obter categorias ativas baseado nos itens das listas
+    if (!getActiveCategories) {
+      console.error('getActiveCategories não está definido');
+      return;
+    }
+    const activeCategories = getActiveCategories();
     
-    if (!shoppingStatus.hasAny) {
-      // Limpar monitoramento se não há itens
+    // Filtrar apenas categorias habilitadas nos filtros
+    const enabledCategories = activeCategories.filter(cat => 
+      placeFilters.enabledCategories.includes(cat)
+    );
+    
+    if (enabledCategories.length === 0) {
+      // Limpar monitoramento se não há categorias ativas
       if (nearbyWatchIdRef.current) {
         if (typeof nearbyWatchIdRef.current === 'number') {
           navigator.geolocation.clearWatch(nearbyWatchIdRef.current);
@@ -467,11 +526,10 @@ const Index = () => {
         return;
       }
       
-      startNearbyMonitoring(shoppingStatus);
+      startNearbyMonitoring();
     };
 
-    const startNearbyMonitoring = (shoppingStatus: { hasShopping: boolean; hasPharmacy: boolean }) => {
-
+    const startNearbyMonitoring = () => {
       try {
         if (typeof window !== 'undefined' && 'geolocation' in navigator) {
           const id = navigator.geolocation.watchPosition(
@@ -481,7 +539,7 @@ const Index = () => {
               
               // Verificar cooldown
               const now = Date.now();
-              const alertCooldown = settings.alertCooldown * 60000; // Converter minutos para milissegundos
+              const alertCooldown = settings.alertCooldown * 1000; // Converter segundos para milissegundos
               if (now - lastAlertTimeRef.current < alertCooldown) {
                 return;
               }
@@ -491,17 +549,31 @@ const Index = () => {
                 return;
               }
 
+              // Obter categorias ativas
+              if (!getActiveCategories) return;
+              const activeCategories = getActiveCategories();
+              const enabledCategories = activeCategories.filter(cat => 
+                placeFilters.enabledCategories.includes(cat)
+              );
+
+              if (enabledCategories.length === 0) return;
+
               // Verificar estabelecimentos próximos
               const nearbyPlace = await checkNearbyRelevantPlaces(
                 [lat, lng],
-                shoppingStatus.hasShopping,
-                shoppingStatus.hasPharmacy,
-                settings.nearbyAlertRadius // Usar raio das configurações
+                enabledCategories,
+                placeFilters.alertRadius || settings.nearbyAlertRadius,
+                placeFilters.filterOpenOnly
               );
 
               if (nearbyPlace) {
                 lastAlertTimeRef.current = now;
-                triggerNearbyAlert(nearbyPlace.type, nearbyPlace.place);
+                triggerNearbyAlert(nearbyPlace.type, {
+                  name: nearbyPlace.place.name,
+                  address: nearbyPlace.place.address,
+                  distance: nearbyPlace.place.distance,
+                  isOpen: nearbyPlace.place.isOpen,
+                });
               }
             },
             (error) => {
@@ -531,7 +603,7 @@ const Index = () => {
 
                 // Verificar cooldown
                 const now = Date.now();
-                const alertCooldown = settings.alertCooldown * 60000; // Converter minutos para milissegundos
+                const alertCooldown = settings.alertCooldown * 1000; // Converter segundos para milissegundos
                 if (now - lastAlertTimeRef.current < alertCooldown) {
                   return;
                 }
@@ -541,17 +613,31 @@ const Index = () => {
                   return;
                 }
 
+                // Obter categorias ativas
+                if (!getActiveCategories) return;
+                const activeCategories = getActiveCategories();
+                const enabledCategories = activeCategories.filter(cat => 
+                  placeFilters.enabledCategories.includes(cat)
+                );
+
+                if (enabledCategories.length === 0) return;
+
                 // Verificar estabelecimentos próximos
                 const nearbyPlace = await checkNearbyRelevantPlaces(
                   [lat, lng],
-                  shoppingStatus.hasShopping,
-                  shoppingStatus.hasPharmacy,
-                  settings.nearbyAlertRadius // Usar raio das configurações
+                  enabledCategories,
+                  placeFilters.alertRadius || settings.nearbyAlertRadius,
+                  placeFilters.filterOpenOnly
                 );
 
                 if (nearbyPlace) {
                   lastAlertTimeRef.current = now;
-                  triggerNearbyAlert(nearbyPlace.type, nearbyPlace.place);
+                  triggerNearbyAlert(nearbyPlace.type, {
+                    name: nearbyPlace.place.name,
+                    address: nearbyPlace.place.address,
+                    distance: nearbyPlace.place.distance,
+                    isOpen: nearbyPlace.place.isOpen,
+                  });
                 }
               }
             ).then((id) => {
@@ -584,20 +670,74 @@ const Index = () => {
         nearbyWatchIdRef.current = null;
       }
     };
-  }, [hasActiveShoppingItems, triggerNearbyAlert, settings.enableNearbyAlerts, settings.nearbyAlertRadius, settings.alertCooldown]);
+  }, [getActiveCategories, placeFilters, triggerNearbyAlert, settings.enableNearbyAlerts, settings.alertCooldown]);
 
-  const handleMapClick = async (lat: number, lng: number) => {
-    if (!isAlarmActive) {
-      setDestination([lat, lng]);
-      setSearchCenter(null); // Limpar busca quando definir destino no mapa
-      toast.success('Destino definido no mapa!');
-      try {
-        await Haptics.impact({ style: ImpactStyle.Light });
-      } catch (error) {
-        // Ignorar erro em ambiente web
-      }
-    }
-  };
+  // Ativação automática de alarmes recorrentes
+  useEffect(() => {
+    if (!commuteSettings.autoStart) return;
+
+    const checkRecurringAlarms = () => {
+      const activeAlarms = getActiveAlarmsForToday();
+      
+      activeAlarms.forEach((alarm) => {
+        // Verificar se o alarme já está ativo
+        if (isAlarmActive && destination && 
+            destination[0] === alarm.destination.location[0] && 
+            destination[1] === alarm.destination.location[1]) {
+          return; // Já está ativo
+        }
+
+        // Ativar o alarme automaticamente
+        setDestination(alarm.destination.location);
+        setDestinationAddress(alarm.destination.address);
+        setRadius(alarm.radius);
+        setIsAlarmActive(true);
+        setStartLocation(currentLocation);
+        alarmStartTimeRef.current = new Date();
+        
+        toast.info(`Alarme "${alarm.name}" ativado automaticamente`, {
+          description: `Ativo até ${alarm.endTime || 'manualmente desativado'}`,
+        });
+      });
+    };
+
+    // Verificar a cada minuto
+    const interval = setInterval(checkRecurringAlarms, 60000);
+    checkRecurringAlarms(); // Verificar imediatamente
+
+    return () => clearInterval(interval);
+  }, [commuteSettings.autoStart, getActiveAlarmsForToday, isAlarmActive, destination, currentLocation]);
+
+  // Desativação automática de alarmes recorrentes por horário
+  useEffect(() => {
+    if (!commuteSettings.autoEnd || !isAlarmActive) return;
+
+    const checkEndTime = () => {
+      const activeAlarms = getActiveAlarmsForToday();
+      const now = new Date();
+      const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+      activeAlarms.forEach((alarm) => {
+        if (alarm.endTime && currentTime > alarm.endTime) {
+          // Desativar alarme se passou do horário de fim
+          setIsAlarmActive(false);
+          setAlarmTriggered(false);
+          alarmStartTimeRef.current = null;
+          
+          toast.info(`Alarme "${alarm.name}" desativado automaticamente`, {
+            description: `Horário de fim: ${alarm.endTime}`,
+          });
+        }
+      });
+    };
+
+    // Verificar a cada minuto
+    const interval = setInterval(checkEndTime, 60000);
+    checkEndTime(); // Verificar imediatamente
+
+    return () => clearInterval(interval);
+  }, [commuteSettings.autoEnd, isAlarmActive, getActiveAlarmsForToday]);
+
 
   const handleToggleAlarm = async () => {
     if (!destination) return;
@@ -605,6 +745,8 @@ const Index = () => {
     if (!isAlarmActive) {
       setAlarmTriggered(false);
       setIsAlarmActive(true);
+      setStartLocation([...currentLocation]); // Salvar localização inicial
+      alarmStartTimeRef.current = new Date(); // Salvar hora de início
       toast.success('Alarme ativado! Monitorando sua localização...', {
         icon: '🔔',
       });
@@ -615,6 +757,7 @@ const Index = () => {
       }
     } else {
       setIsAlarmActive(false);
+      alarmStartTimeRef.current = null;
       toast.info('Alarme desativado');
       try {
         await Haptics.impact({ style: ImpactStyle.Light });
@@ -638,8 +781,9 @@ const Index = () => {
   const handleAddressSelect = (lat: number, lng: number, address: string) => {
     // Limpar destino anterior quando buscar novo endereço
     setDestination(null);
+    setDestinationAddress('');
     setSearchCenter([lat, lng]);
-    toast.success(`Endereço encontrado! Clique no mapa para definir como destino.`, {
+    toast.success(`Endereço encontrado! Clique no mapa ou selecione para definir como destino.`, {
       description: address,
       duration: 5000,
     });
@@ -651,6 +795,7 @@ const Index = () => {
 
   const handleDestinationSelect = async (lat: number, lng: number, address: string) => {
     setDestination([lat, lng]);
+    setDestinationAddress(address);
     setSearchCenter(null); // Limpar busca quando destino for definido
     toast.success('Destino definido com sucesso!', {
       description: address,
@@ -663,13 +808,92 @@ const Index = () => {
     }
   };
 
+  const handleMapClick = async (lat: number, lng: number) => {
+    if (!isAlarmActive) {
+      setDestination([lat, lng]);
+      // Tentar obter endereço reverso (opcional)
+      setDestinationAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      setSearchCenter(null); // Limpar busca quando definir destino no mapa
+      toast.success('Destino definido no mapa!');
+      try {
+        await Haptics.impact({ style: ImpactStyle.Light });
+      } catch (error) {
+        // Ignorar erro em ambiente web
+      }
+    }
+  };
+
+  const handleSaveFavorite = () => {
+    if (!destination || !destinationAddress) return;
+    setEditingFavorite(undefined);
+    setShowFavoriteModal(true);
+  };
+
+  const handleFavoriteSave = (favoriteData: Omit<FavoriteDestination, 'id' | 'createdAt' | 'updatedAt' | 'useCount'>) => {
+    if (editingFavorite) {
+      // Atualizar favorito existente
+      updateFavorite(editingFavorite.id, {
+        ...favoriteData,
+        location: favoriteData.location || editingFavorite.location,
+        address: favoriteData.address || editingFavorite.address,
+      });
+      toast.success('Favorito atualizado!');
+    } else {
+      if (!destination || !destinationAddress) {
+        toast.error('Erro ao salvar favorito');
+        return;
+      }
+      addFavorite({
+        ...favoriteData,
+        location: destination,
+        address: destinationAddress,
+        radius: favoriteData.radius || radius,
+      });
+      toast.success('Favorito salvo!');
+    }
+    setShowFavoriteModal(false);
+    setEditingFavorite(undefined);
+  };
+
+  const handleFavoriteSelect = (favorite: FavoriteDestination) => {
+    setDestination(favorite.location);
+    setDestinationAddress(favorite.address);
+    if (favorite.radius) {
+      setRadius(favorite.radius);
+    }
+    incrementUseCount(favorite.id);
+    setShowFavorites(false);
+    toast.success(`Destino "${favorite.name}" selecionado!`);
+  };
+
+  const handleEditFavorite = (favorite: FavoriteDestination) => {
+    setEditingFavorite(favorite);
+    setShowFavoriteModal(true);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/30 p-4 pb-safe">
       <div className="max-w-2xl mx-auto h-screen flex flex-col gap-4">
         {/* Header com botões de ação */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Sonecaz</h1>
           <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground">Sonecaz</h1>
+            {!isOnline && (
+              <span className="text-xs bg-yellow-500 text-white px-2 py-1 rounded-full" title="Modo Offline">
+                📴 Offline
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFavorites(!showFavorites)}
+              className="flex items-center gap-2"
+            >
+              <Star className="w-4 h-4" />
+              <span className="hidden sm:inline">Favoritos</span>
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -677,7 +901,7 @@ const Index = () => {
               className="flex items-center gap-2"
             >
               <ListTodo className="w-4 h-4" />
-              <span>Listas</span>
+              <span className="hidden sm:inline">Listas</span>
               {hasActiveShoppingItems().hasAny && (
                 <span className="ml-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
                   !
@@ -708,8 +932,26 @@ const Index = () => {
           </div>
         </div>
 
+        {/* Favorites Panel */}
+        {showFavorites && (
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowFavorites(false)}
+              className="absolute top-2 right-2 z-10"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+            <FavoritesPanel
+              onSelectFavorite={handleFavoriteSelect}
+              onEditFavorite={handleEditFavorite}
+            />
+          </div>
+        )}
+
         {/* Map Section */}
-        <div className="flex-1 rounded-2xl overflow-hidden shadow-xl border border-border/50">
+        <div className={cn("flex-1 rounded-2xl overflow-hidden shadow-xl border border-border/50 transition-all", showFavorites && "h-1/2")}>
           <LocationMap
             center={currentLocation}
             destination={destination}
@@ -726,15 +968,34 @@ const Index = () => {
             isActive={isAlarmActive}
             radius={radius}
             destination={destination}
+            destinationAddress={destinationAddress}
             onToggleAlarm={handleToggleAlarm}
             onRadiusChange={handleRadiusChange}
             distance={distance}
             onAddressSelect={handleAddressSelect}
             onDestinationSelect={handleDestinationSelect}
             onMapCenterChange={handleMapCenterChange}
+            onSaveFavorite={handleSaveFavorite}
             mapCenter={searchCenter || currentLocation}
           />
         </div>
+
+        {/* Favorite Modal */}
+        <FavoriteModal
+          open={showFavoriteModal}
+          onClose={() => {
+            setShowFavoriteModal(false);
+            setEditingFavorite(undefined);
+          }}
+          onSave={handleFavoriteSave}
+          initialData={destination && destinationAddress ? {
+            name: destinationAddress.split(',')[0] || 'Novo Favorito',
+            address: destinationAddress,
+            location: destination,
+            radius,
+          } : undefined}
+          favorite={editingFavorite}
+        />
       </div>
     </div>
   );

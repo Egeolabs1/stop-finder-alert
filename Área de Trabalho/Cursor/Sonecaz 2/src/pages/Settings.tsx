@@ -4,13 +4,26 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Settings as SettingsIcon, Bell, Radio } from 'lucide-react';
+import { ArrowLeft, Settings as SettingsIcon, Bell, Radio, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSettings } from '@/hooks/useSettings';
+import { useCommuteMode } from '@/hooks/useCommuteMode';
+import CommuteSettings from '@/components/CommuteSettings';
+import PlaceFilters from '@/components/PlaceFilters';
+import LanguageSelector from '@/components/LanguageSelector';
+import { useTranslation } from '@/hooks/useTranslation';
 
 const Settings = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { settings, isLoading, updateSetting, saveSettings, DEFAULT_SETTINGS } = useSettings();
+  const {
+    settings: commuteSettings,
+    silentMode,
+    isLoading: commuteLoading,
+    updateSettings: updateCommuteSettings,
+    updateSilentMode,
+  } = useCommuteMode();
 
   // Atualizar uma configuração específica com toast
   const handleUpdateSetting = <K extends keyof typeof settings>(
@@ -23,9 +36,9 @@ const Settings = () => {
 
   // Resetar para padrões
   const resetToDefaults = () => {
-    if (confirm('Tem certeza que deseja restaurar as configurações padrão?')) {
+    if (confirm(t('common.confirm'))) {
       saveSettings(DEFAULT_SETTINGS);
-      toast.info('Configurações restauradas para os valores padrão');
+      toast.info(t('settings.restoreDefaults'));
     }
   };
 
@@ -54,17 +67,17 @@ const Settings = () => {
             className="flex items-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
-            Voltar
+            {t('common.back')}
           </Button>
         </div>
 
         <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-3 mb-2">
             <SettingsIcon className="w-8 h-8 text-primary" />
-            <h1 className="text-3xl font-bold text-foreground">Configurações</h1>
+            <h1 className="text-3xl font-bold text-foreground">{t('settings.title')}</h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            Personalize o comportamento do Sonecaz
+            {t('settings.title')}
           </p>
         </div>
 
@@ -181,6 +194,22 @@ const Settings = () => {
           </div>
         </Card>
 
+        {/* Configurações de Modo Deslocamento */}
+        {!commuteLoading && (
+          <CommuteSettings
+            settings={commuteSettings}
+            silentMode={silentMode}
+            onSettingsChange={updateCommuteSettings}
+            onSilentModeChange={updateSilentMode}
+          />
+        )}
+
+        {/* Filtros de Estabelecimentos */}
+        <PlaceFilters />
+
+        {/* Seletor de Idioma */}
+        <LanguageSelector />
+
         {/* Configurações de Notificações */}
         <Card className="p-6 space-y-6">
           <div className="flex items-center gap-3">
@@ -223,6 +252,18 @@ const Settings = () => {
           </div>
         </Card>
 
+        {/* Link para Alarmes Recorrentes */}
+        <Card className="p-4">
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => navigate('/recurring-alarms')}
+          >
+            <Calendar className="w-4 h-4 mr-2" />
+            Gerenciar Alarmes Recorrentes
+          </Button>
+        </Card>
+
         {/* Botões de Ação */}
         <div className="flex gap-4">
           <Button
@@ -230,13 +271,13 @@ const Settings = () => {
             onClick={resetToDefaults}
             className="flex-1"
           >
-            Restaurar Padrões
+            {t('settings.restoreDefaults')}
           </Button>
           <Button
             onClick={() => navigate('/')}
             className="flex-1"
           >
-            Concluído
+            {t('settings.done')}
           </Button>
         </div>
 
@@ -245,6 +286,19 @@ const Settings = () => {
           <p className="text-sm text-blue-900 dark:text-blue-100">
             💡 <strong>Dica:</strong> As configurações são salvas automaticamente quando você as altera.
           </p>
+        </Card>
+
+        {/* Sobre */}
+        <Card className="p-6">
+          <div className="text-center space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">{t('settings.about')}</h3>
+            <p className="text-sm text-muted-foreground">
+              {t('settings.developedBy')}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t('settings.rightsReserved')}
+            </p>
+          </div>
         </Card>
       </div>
     </div>

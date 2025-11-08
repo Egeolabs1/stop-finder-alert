@@ -7,6 +7,8 @@ import Index from "./pages/Index";
 import Lists from "./pages/Lists";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
+import History from "./pages/History";
+import RecurringAlarms from "./pages/RecurringAlarms";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +29,8 @@ const App = () => (
           <Route path="/lists" element={<Lists />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/recurring-alarms" element={<RecurringAlarms />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

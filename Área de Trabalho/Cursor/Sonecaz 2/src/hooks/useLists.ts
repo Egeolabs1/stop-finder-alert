@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { List, TodoItem, ShoppingItem, ListType } from '@/types/list';
+import { PlaceCategory } from '@/types/places';
 
 const STORAGE_KEY = 'sonecaz_lists';
 
@@ -15,6 +16,7 @@ export const useLists = () => {
         // Converter datas de string para Date
         const listsWithDates = parsed.map((list: any) => ({
           ...list,
+          type: list.type === 'pharmacy' ? 'shopping' : list.type, // Migração
           createdAt: new Date(list.createdAt),
           updatedAt: new Date(list.updatedAt),
           items: list.items.map((item: any) => ({
@@ -39,14 +41,6 @@ export const useLists = () => {
             id: 'shopping-default',
             type: 'shopping',
             name: 'Lista de Compras',
-            items: [],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          {
-            id: 'pharmacy-default',
-            type: 'pharmacy',
-            name: 'Farmácia',
             items: [],
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -141,16 +135,45 @@ export const useLists = () => {
   // Verificar se há itens não completados em listas de compras/farmácia
   const hasActiveShoppingItems = useCallback(() => {
     const shoppingList = getListByType('shopping');
-    const pharmacyList = getListByType('pharmacy');
     
     const hasShopping = shoppingList?.items.some(item => !item.completed) || false;
-    const hasPharmacy = pharmacyList?.items.some(item => !item.completed) || false;
     
     return {
       hasShopping,
-      hasPharmacy,
-      hasAny: hasShopping || hasPharmacy,
+      hasPharmacy: false, // Mantido para compatibilidade
+      hasAny: hasShopping,
     };
+  }, [getListByType]);
+
+  // Obter categorias ativas baseado nos itens não completados
+  const getActiveCategories = useCallback((): PlaceCategory[] => {
+    const shoppingList = getListByType('shopping');
+    if (!shoppingList) return [];
+
+    const activeItems = shoppingList.items.filter(item => !item.completed) as ShoppingItem[];
+    const categories = new Set<PlaceCategory>();
+
+    activeItems.forEach(item => {
+      if (item.category && item.category !== 'other') {
+        categories.add(item.category as PlaceCategory);
+      }
+    });
+
+    // Se não há categorias específicas mas há itens ativos, retornar categorias padrão
+    if (categories.size === 0 && activeItems.length > 0) {
+      // Verificar se há itens relacionados a farmácia ou supermercado por texto
+      const hasPharmacyKeywords = activeItems.some(item =>
+        item.text.toLowerCase().match(/medic|remédio|farmácia|comprimido|droga/i)
+      );
+      const hasSupermarketKeywords = activeItems.some(item =>
+        item.text.toLowerCase().match(/comida|alimento|bebida|leite|pão/i)
+      );
+
+      if (hasPharmacyKeywords) categories.add('pharmacy');
+      if (hasSupermarketKeywords) categories.add('supermarket');
+    }
+
+    return Array.from(categories);
   }, [getListByType]);
 
   return {
@@ -160,9 +183,7 @@ export const useLists = () => {
     toggleItem,
     getListByType,
     hasActiveShoppingItems,
+    getActiveCategories,
     updateLists,
   };
 };
-
-
-

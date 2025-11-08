@@ -1,4 +1,6 @@
-export type ListType = 'todo' | 'shopping' | 'pharmacy';
+import { PlaceCategory } from './places';
+
+export type ListType = 'todo' | 'shopping' | 'places';
 
 export interface TodoItem {
   id: string;
@@ -12,7 +14,7 @@ export interface ShoppingItem {
   id: string;
   text: string;
   completed: boolean;
-  category?: 'supermarket' | 'pharmacy' | 'other';
+  category?: PlaceCategory | 'other';
   createdAt: Date;
   completedAt?: Date;
 }
@@ -26,15 +28,13 @@ export interface List {
   updatedAt: Date;
 }
 
+// Mantido para compatibilidade
 export interface NearbyPlace {
   id: string;
   name: string;
   address: string;
   location: [number, number];
-  type: 'supermarket' | 'pharmacy';
+  type: PlaceCategory;
   distance: number;
   placeId?: string;
 }
-
-
-

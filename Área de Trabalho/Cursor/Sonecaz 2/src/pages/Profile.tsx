@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, User, Mail, Calendar, Bell, ShoppingCart, Radio, Edit2, Save, X } from 'lucide-react';
+import { ArrowLeft, User, Mail, Calendar, Bell, ShoppingCart, Radio, Edit2, Save, X, Clock, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProfile } from '@/hooks/useProfile';
 
@@ -223,6 +223,14 @@ const Profile = () => {
                   : `${profile.favoriteRadius} m`}
               </span>
             </div>
+            <Button
+              variant="outline"
+              className="w-full mt-4"
+              onClick={() => navigate('/history')}
+            >
+              <History className="w-4 h-4 mr-2" />
+              Ver Histórico de Alarmes
+            </Button>
           </div>
         </Card>
 

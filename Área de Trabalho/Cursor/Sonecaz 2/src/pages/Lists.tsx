@@ -11,16 +11,15 @@ const Lists = () => {
 
   const todoList = getListByType('todo');
   const shoppingList = getListByType('shopping');
-  const pharmacyList = getListByType('pharmacy');
 
-  const handleAddItem = (listId: string, type: 'todo' | 'shopping' | 'pharmacy') => {
+  const handleAddItem = (listId: string, type: 'todo' | 'shopping') => {
     return (text: string) => {
       const newItem: TodoItem | ShoppingItem = {
         id: `${Date.now()}-${Math.random()}`,
         text,
         completed: false,
         createdAt: new Date(),
-        category: type === 'shopping' ? 'supermarket' : type === 'pharmacy' ? 'pharmacy' : undefined,
+        category: type === 'shopping' ? undefined : undefined, // Será inferido automaticamente
       };
       addItem(listId, newItem);
     };
@@ -69,18 +68,6 @@ const Lists = () => {
             onToggleItem={(itemId) => toggleItem(shoppingList.id, itemId)}
             onRemoveItem={(itemId) => removeItem(shoppingList.id, itemId)}
             icon={<ShoppingCart className="w-4 h-4" />}
-          />
-        )}
-
-        {pharmacyList && (
-          <TodoList
-            type="pharmacy"
-            title={pharmacyList.name}
-            items={pharmacyList.items}
-            onAddItem={handleAddItem(pharmacyList.id, 'pharmacy')}
-            onToggleItem={(itemId) => toggleItem(pharmacyList.id, itemId)}
-            onRemoveItem={(itemId) => removeItem(pharmacyList.id, itemId)}
-            icon={<Pill className="w-4 h-4" />}
           />
         )}
 
