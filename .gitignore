@@ -1,0 +1,100 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Cache
+.cache/
+.next/
+.nuxt/
+.vite/
+
+# Build outputs
+build/
+dist/
+out/
+
+# IDE
+*.swp
+*.swo
+*~
+
+# Capacitor
+.capacitor/
+ios/
+android/
+
+# Temporary files
+*.tmp
+*.temp
+
+# User-specific files (não deve estar no projeto)
+AppData/
+Contacts/
+Desktop/
+Documents/
+Downloads/
+Dropbox/
+Favorites/
+Links/
+Music/
+Videos/
+Saved Games/
+Searches/
+.claude/
+.codex/
+.conda/
+.cursor/
+.expo/
+.gemini/
+.gitconfig
+.lmstudio/
+.local/
+.matplotlib/
+.rfb/
+.trae/
+.vscode/extensions/
+*.blb
+*.parc
+AMDRM_Install.log
+inst.ini
+ntuser.*
+useruid.ini
+nuuid.ini
+vmlogs/
+Muse Hub/
+WPS Cloud Files/
+dyad-apps/
+
+
