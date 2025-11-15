@@ -1,80 +1,83 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Language, SUPPORTED_LANGUAGES } from '@/types/i18n';
-import translations from '@/locales';
-import { pt } from '@/locales/pt';
+import translations, { Translations } from '@/locales';
+import { getTextDirection, isRTL } from '@/utils/i18n';
 
-const STORAGE_KEY = 'sonecaz_language';
-
-// Detectar idioma do navegador
-const detectBrowserLanguage = (): Language => {
-  if (typeof window === 'undefined') return 'pt';
-  
-  const browserLang = navigator.language || (navigator as any).userLanguage || 'pt';
-  const langCode = browserLang.split('-')[0].toLowerCase();
-  
-  // Verificar se o idioma é suportado
-  const supportedCodes = SUPPORTED_LANGUAGES.map(l => l.code);
-  if (supportedCodes.includes(langCode as Language)) {
-    return langCode as Language;
-  }
-  
-  // Fallback para português
-  return 'pt';
-};
+const LOCAL_STORAGE_LANG_KEY = 'sonecaz_language';
 
 export const useTranslation = () => {
   const [language, setLanguage] = useState<Language>(() => {
+    // Tenta carregar do localStorage
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored && SUPPORTED_LANGUAGES.some(l => l.code === stored)) {
-        return stored as Language;
+      const storedLang = localStorage.getItem(LOCAL_STORAGE_LANG_KEY);
+      if (storedLang && translations[storedLang as Language]) {
+        return storedLang as Language;
       }
-      return detectBrowserLanguage();
-    } catch {
-      return detectBrowserLanguage();
+    } catch (error) {
+      console.error('Error loading language from localStorage:', error);
     }
+    
+    // Detecta o idioma do navegador
+    const browserLang = navigator.language.split('-')[0] as Language;
+    if (translations[browserLang]) {
+      return browserLang;
+    }
+    
+    // Fallback para português
+    return 'pt';
   });
 
-  // Salvar idioma no localStorage
+  const [currentTranslations, setCurrentTranslations] = useState<Translations>(translations[language]);
+  const [direction, setDirection] = useState<'ltr' | 'rtl'>(getTextDirection(language));
+
   useEffect(() => {
+    setCurrentTranslations(translations[language]);
+    const newDirection = getTextDirection(language);
+    setDirection(newDirection);
+    
+    // Aplicar direção ao documento
+    if (typeof document !== 'undefined') {
+      document.documentElement.dir = newDirection;
+      document.documentElement.lang = language;
+    }
+    
     try {
-      localStorage.setItem(STORAGE_KEY, language);
+      localStorage.setItem(LOCAL_STORAGE_LANG_KEY, language);
     } catch (error) {
-      console.error('Error saving language:', error);
+      console.error('Error saving language to localStorage:', error);
     }
   }, [language]);
 
-  // Função de tradução
-  const t = useCallback((key: string, params?: Record<string, string | number>): string => {
-    const translation = translations[language]?.[key as keyof typeof pt] || key;
-    
-    if (params) {
-      return Object.entries(params).reduce(
-        (text, [paramKey, paramValue]) => 
-          text.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(paramValue)),
-        translation
-      );
+  const changeLanguage = useCallback((newLang: Language) => {
+    if (translations[newLang]) {
+      setLanguage(newLang);
+    } else {
+      console.warn(`Language ${newLang} not supported, falling back to English.`);
+      setLanguage('en');
     }
-    
-    return translation;
-  }, [language]);
-
-  // Mudar idioma
-  const changeLanguage = useCallback((newLanguage: Language) => {
-    setLanguage(newLanguage);
   }, []);
 
-  // Obter idioma atual
-  const currentLanguage = useCallback(() => {
-    return SUPPORTED_LANGUAGES.find(l => l.code === language) || SUPPORTED_LANGUAGES[0];
-  }, [language]);
+  // Função para traduzir com interpolação básica
+  const translate = useCallback((key: string, params?: Record<string, string | number>): string => {
+    // Acessa a tradução usando a chave como string
+    let text = (currentTranslations as Record<string, string>)[key] || 
+               (translations.en as Record<string, string>)[key] || 
+               key;
+    
+    if (params) {
+      for (const [paramKey, paramValue] of Object.entries(params)) {
+        text = text.replace(new RegExp(`{${paramKey}}`, 'g'), String(paramValue));
+      }
+    }
+    return text;
+  }, [currentTranslations]);
 
-  return {
-    t,
-    language,
+  return { 
+    t: translate, 
+    language, 
     changeLanguage,
-    currentLanguage,
+    direction,
+    isRTL: isRTL(language),
     supportedLanguages: SUPPORTED_LANGUAGES,
   };
 };
-

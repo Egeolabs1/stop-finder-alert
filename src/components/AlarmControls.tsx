@@ -160,4 +160,3 @@ const AlarmControls = ({
 };
 
 export default AlarmControls;
-

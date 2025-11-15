@@ -173,3 +173,5 @@ export const fr = {
   'days.sun': 'Dim',
 };
 
+
+

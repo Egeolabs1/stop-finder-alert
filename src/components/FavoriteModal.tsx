@@ -226,3 +226,7 @@ const FavoriteModal = ({
 
 export default FavoriteModal;
 
+
+
+
+

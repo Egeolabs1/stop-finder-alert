@@ -250,23 +250,28 @@ const LocationMap = (props: LocationMapProps) => {
   // Verificar se a chave de API está configurada
   if (!GOOGLE_MAPS_API_KEY) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-100 rounded-2xl">
-        <div className="text-center p-6 max-w-md">
-          <p className="text-yellow-600 font-semibold text-lg mb-2">⚠️ Configuração necessária</p>
-          <p className="text-sm text-gray-600 mb-4">
+      <div className="flex items-center justify-center w-full h-full min-h-[400px] bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-2xl">
+        <div className="text-center p-6 max-w-md mx-auto">
+          <div className="mb-4">
+            <svg className="w-16 h-16 mx-auto text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <p className="text-yellow-600 dark:text-yellow-400 font-semibold text-lg mb-2">⚠️ Configuração necessária</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
             Para usar o Google Maps, você precisa configurar uma chave de API.
           </p>
-          <div className="text-left bg-gray-50 p-4 rounded-lg text-xs font-mono mb-4">
-            <p className="text-gray-700 mb-2">1. Crie um arquivo <code className="bg-white px-1 rounded">.env</code> na raiz do projeto</p>
-            <p className="text-gray-700 mb-2">2. Adicione:</p>
-            <code className="block bg-white p-2 rounded mt-1">VITE_GOOGLE_MAPS_API_KEY=sua_chave_aqui</code>
-            <p className="text-gray-700 mt-3 mb-2">3. Reinicie o servidor de desenvolvimento</p>
+          <div className="text-left bg-white dark:bg-gray-800 p-4 rounded-lg text-xs font-mono mb-4 border border-gray-200 dark:border-gray-700">
+            <p className="text-gray-700 dark:text-gray-300 mb-2">1. Crie um arquivo <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.env</code> na raiz do projeto</p>
+            <p className="text-gray-700 dark:text-gray-300 mb-2">2. Adicione:</p>
+            <code className="block bg-gray-100 dark:bg-gray-700 p-2 rounded mt-1 text-gray-800 dark:text-gray-200">VITE_GOOGLE_MAPS_API_KEY=sua_chave_aqui</code>
+            <p className="text-gray-700 dark:text-gray-300 mt-3 mb-2">3. Reinicie o servidor de desenvolvimento</p>
           </div>
           <a 
             href="https://console.cloud.google.com/" 
             target="_blank" 
             rel="noopener noreferrer" 
-            className="text-blue-600 underline text-sm"
+            className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline text-sm font-medium"
           >
             Obter chave de API →
           </a>
@@ -275,7 +280,18 @@ const LocationMap = (props: LocationMapProps) => {
     );
   }
 
-  return <LocationMapComponent {...props} />;
+  // Garantir que sempre retorne um elemento React válido
+  const component = <LocationMapComponent {...props} />;
+  if (!component) {
+    return (
+      <div className="flex items-center justify-center w-full h-full min-h-[400px] bg-gray-100 rounded-2xl">
+        <div className="text-center p-4">
+          <p className="text-red-600 font-semibold">Erro ao renderizar mapa</p>
+        </div>
+      </div>
+    );
+  }
+  return component;
 };
 
 export default LocationMap;

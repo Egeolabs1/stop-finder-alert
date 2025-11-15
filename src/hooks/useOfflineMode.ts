@@ -32,12 +32,52 @@ export const useOfflineMode = () => {
     syncQueue: [],
   });
 
+  // Salvar cache no localStorage
+  const saveCache = useCallback((newCache: OfflineCache) => {
+    try {
+      localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(newCache));
+      setCache(newCache);
+    } catch (error) {
+      console.error('Error saving offline cache:', error);
+    }
+  }, []);
+
+  // Sincronizar quando voltar online
+  const syncWhenOnline = useCallback(async () => {
+    if (!isOnline || cache.syncQueue.length === 0) return;
+
+    try {
+      // Processar itens da fila de sincronização
+      const processedItems: string[] = [];
+      
+      for (const item of cache.syncQueue) {
+        try {
+          // Aqui você pode adicionar lógica para sincronizar com servidor
+          // Por enquanto, apenas marcamos como processado
+          console.log('Syncing item:', item);
+          processedItems.push(item.id);
+        } catch (error) {
+          console.error('Error syncing item:', error);
+        }
+      }
+
+      // Remover itens processados da fila
+      if (processedItems.length > 0) {
+        const newCache = {
+          ...cache,
+          syncQueue: cache.syncQueue.filter(item => !processedItems.includes(item.id)),
+        };
+        saveCache(newCache);
+      }
+    } catch (error) {
+      console.error('Error syncing:', error);
+    }
+  }, [isOnline, cache, saveCache]);
+
   // Monitorar status de conexão
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      // Tentar sincronizar quando voltar online
-      syncWhenOnline();
     };
 
     const handleOffline = () => {
@@ -52,6 +92,13 @@ export const useOfflineMode = () => {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Sincronizar quando voltar online
+  useEffect(() => {
+    if (isOnline && cache.syncQueue.length > 0) {
+      syncWhenOnline();
+    }
+  }, [isOnline, cache.syncQueue.length, syncWhenOnline]);
 
   // Carregar cache do localStorage
   useEffect(() => {
@@ -85,16 +132,6 @@ export const useOfflineMode = () => {
       }
     } catch (error) {
       console.error('Error loading offline cache:', error);
-    }
-  }, []);
-
-  // Salvar cache no localStorage
-  const saveCache = useCallback((newCache: OfflineCache) => {
-    try {
-      localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(newCache));
-      setCache(newCache);
-    } catch (error) {
-      console.error('Error saving offline cache:', error);
     }
   }, []);
 
@@ -185,38 +222,6 @@ export const useOfflineMode = () => {
     saveCache(newCache);
   }, [cache, saveCache]);
 
-  // Sincronizar quando voltar online
-  const syncWhenOnline = useCallback(async () => {
-    if (!isOnline || cache.syncQueue.length === 0) return;
-
-    try {
-      // Processar itens da fila de sincronização
-      const processedItems: string[] = [];
-      
-      for (const item of cache.syncQueue) {
-        try {
-          // Aqui você pode adicionar lógica para sincronizar com servidor
-          // Por enquanto, apenas marcamos como processado
-          console.log('Syncing item:', item);
-          processedItems.push(item.id);
-        } catch (error) {
-          console.error('Error syncing item:', error);
-        }
-      }
-
-      // Remover itens processados da fila
-      if (processedItems.length > 0) {
-        const newCache = {
-          ...cache,
-          syncQueue: cache.syncQueue.filter(item => !processedItems.includes(item.id)),
-        };
-        saveCache(newCache);
-      }
-    } catch (error) {
-      console.error('Error syncing:', error);
-    }
-  }, [isOnline, cache, saveCache]);
-
   // Limpar cache
   const clearCache = useCallback(() => {
     const emptyCache: OfflineCache = {
@@ -238,4 +243,3 @@ export const useOfflineMode = () => {
     clearCache,
   };
 };
-

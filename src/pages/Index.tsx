@@ -1,9 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+// Import direto (sem lazy loading) para evitar erro React #306
+// O code splitting será feito pelo Vite automaticamente via manualChunks
+// Validar que os componentes existam antes de usar
 import LocationMap from '@/components/LocationMap';
 import AlarmControls from '@/components/AlarmControls';
 import FavoritesPanel from '@/components/FavoritesPanel';
 import FavoriteModal from '@/components/FavoriteModal';
+
+// Garantir que os componentes sejam válidos
+if (!LocationMap || !AlarmControls || !FavoritesPanel || !FavoriteModal) {
+  console.error('[Index] Erro: Componentes não carregados corretamente');
+}
 import { toast } from 'sonner';
 import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -23,6 +31,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ListTodo, Bell, Settings, User, Star, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/hooks/useProfile';
+import { useAuth } from '@/contexts/AuthContext';
+import { playAlarmSound } from '@/utils/alarmSounds';
 
 // Calculate distance between two coordinates (Haversine formula)
 const calculateDistance = (
@@ -45,8 +55,10 @@ const calculateDistance = (
   return R * c; // Distance in meters
 };
 
-const Index = () => {
+export default function Index() {
+  // Hooks devem ser chamados no topo (regra dos hooks)
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   // Desestruturar getActiveCategories do hook useLists
   const { hasActiveShoppingItems, getActiveCategories } = useLists();
   const { settings } = useSettings();
@@ -75,6 +87,7 @@ const Index = () => {
   const nearbyWatchIdRef = useRef<number | string | null>(null);
   const lastAlertTimeRef = useRef<number>(0);
   const alarmStartTimeRef = useRef<Date | null>(null);
+  const watchIdRef = useRef<number | string | null>(null);
 
   // Atualizar radius quando as configurações mudarem
   useEffect(() => {
@@ -165,14 +178,22 @@ const Index = () => {
 
   // Trigger alarm when destination is reached
   const triggerAlarm = useCallback(async () => {
-    if (alarmTriggered) return;
+    console.log('[triggerAlarm] Função chamada. alarmTriggered:', alarmTriggered);
+    
+    if (alarmTriggered) {
+      console.log('[triggerAlarm] Alarme já foi disparado anteriormente. Ignorando.');
+      return;
+    }
     
     // Verificar modo silencioso
-    if (isSilentModeActive()) {
-      console.log('Modo silencioso ativo - alarme não será disparado');
+    const silentMode = isSilentModeActive();
+    console.log('[triggerAlarm] Modo silencioso:', silentMode);
+    if (silentMode) {
+      console.log('[triggerAlarm] Modo silencioso ativo - alarme não será disparado');
       return;
     }
 
+    console.log('[triggerAlarm] Disparando alarme...');
     setAlarmTriggered(true);
     
     // Calcular duração do alarme
@@ -207,14 +228,18 @@ const Index = () => {
       }
 
       // Send notification (se habilitada e não estiver em modo silencioso)
+      console.log('[triggerAlarm] Notificações habilitadas:', settings.enableNotifications);
+      console.log('[triggerAlarm] Modo silencioso:', isSilentModeActive());
       if (settings.enableNotifications && !isSilentModeActive()) {
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          console.log('[triggerAlarm] Enviando notificação do navegador...');
           // Usar API nativa do navegador
           new Notification('🔔 Sonecaz - Você chegou!', {
             body: 'Você está próximo ao seu destino. Hora de acordar!',
             icon: '/favicon.ico',
           });
         } else {
+          console.log('[triggerAlarm] Tentando usar Capacitor para notificação...');
           // Tentar usar Capacitor se disponível
           try {
             await LocalNotifications.schedule({
@@ -231,11 +256,17 @@ const Index = () => {
                 },
               ],
             });
+            console.log('[triggerAlarm] Notificação agendada com sucesso');
           } catch (notificationError) {
-            console.error('Notification error:', notificationError);
+            console.error('[triggerAlarm] Erro ao agendar notificação:', notificationError);
           }
         }
+      } else {
+        console.log('[triggerAlarm] Notificações não serão enviadas (desabilitadas ou modo silencioso)');
       }
+
+      // Tocar som do alarme (usando o som escolhido nas configurações)
+      await playAlarmSound(settings.alarmSound);
 
       // Visual alert
       toast.error('🔔 VOCÊ CHEGOU AO SEU DESTINO!', {
@@ -260,19 +291,20 @@ const Index = () => {
   // Watch location when alarm is active
   useEffect(() => {
     if (!isAlarmActive || !destination) {
-      if (watchId) {
-        // Limpar watch anterior
-        if (typeof watchId === 'number') {
+      // Limpar watch anterior
+      if (watchIdRef.current) {
+        if (typeof watchIdRef.current === 'number') {
           // API nativa do navegador
-          navigator.geolocation.clearWatch(watchId);
+          navigator.geolocation.clearWatch(watchIdRef.current);
         } else {
           // Capacitor
           try {
-            Geolocation.clearWatch({ id: watchId });
+            Geolocation.clearWatch({ id: watchIdRef.current });
           } catch (error) {
             // Ignorar erro
           }
         }
+        watchIdRef.current = null;
         setWatchId(null);
       }
       return;
@@ -299,7 +331,9 @@ const Index = () => {
               setDistance(dist);
 
               // Check if within radius
+              console.log(`[Alarme] Distância: ${dist.toFixed(0)}m, Raio: ${radius}m`);
               if (dist <= radius) {
+                console.log('[Alarme] Dentro do raio! Disparando alarme...');
                 triggerAlarm();
               }
             },
@@ -314,6 +348,7 @@ const Index = () => {
               maximumAge: 0,
             }
           );
+          watchIdRef.current = id;
           setWatchId(id);
         } else {
           // Tentar usar Capacitor se disponível
@@ -345,12 +380,15 @@ const Index = () => {
                   setDistance(dist);
 
                   // Check if within radius
+                  console.log(`[Alarme] Distância: ${dist.toFixed(0)}m, Raio: ${radius}m`);
                   if (dist <= radius) {
+                    console.log('[Alarme] Dentro do raio! Disparando alarme...');
                     triggerAlarm();
                   }
                 }
               }
             );
+            watchIdRef.current = id;
             setWatchId(id);
           } catch (capacitorError) {
             console.error('Error watching position:', capacitorError);
@@ -368,21 +406,22 @@ const Index = () => {
     startWatching();
 
     return () => {
-      if (watchId) {
-        if (typeof watchId === 'number') {
+      if (watchIdRef.current) {
+        if (typeof watchIdRef.current === 'number') {
           // API nativa do navegador
-          navigator.geolocation.clearWatch(watchId);
+          navigator.geolocation.clearWatch(watchIdRef.current);
         } else {
           // Capacitor
           try {
-            Geolocation.clearWatch({ id: watchId });
+            Geolocation.clearWatch({ id: watchIdRef.current });
           } catch (error) {
             // Ignorar erro
           }
         }
+        watchIdRef.current = null;
       }
     };
-  }, [isAlarmActive, destination, radius, triggerAlarm, watchId]);
+  }, [isAlarmActive, destination, radius, triggerAlarm]);
 
   // Update distance when destination or current location changes
   useEffect(() => {
@@ -491,7 +530,6 @@ const Index = () => {
 
     // Obter categorias ativas baseado nos itens das listas
     if (!getActiveCategories) {
-      console.error('getActiveCategories não está definido');
       return;
     }
     const activeCategories = getActiveCategories();
@@ -670,7 +708,7 @@ const Index = () => {
         nearbyWatchIdRef.current = null;
       }
     };
-  }, [getActiveCategories, placeFilters, triggerNearbyAlert, settings.enableNearbyAlerts, settings.alertCooldown]);
+  }, [getActiveCategories, placeFilters, triggerNearbyAlert, settings.enableNearbyAlerts, settings.alertCooldown, settings.nearbyAlertRadius]);
 
   // Ativação automática de alarmes recorrentes
   useEffect(() => {
@@ -738,249 +776,258 @@ const Index = () => {
     return () => clearInterval(interval);
   }, [commuteSettings.autoEnd, isAlarmActive, getActiveAlarmsForToday]);
 
+  // Handle map click to set destination
+  const handleMapClick = useCallback(async (lat: number, lng: number) => {
+    if (isAlarmActive) return;
 
-  const handleToggleAlarm = async () => {
-    if (!destination) return;
-
-    if (!isAlarmActive) {
-      setAlarmTriggered(false);
-      setIsAlarmActive(true);
-      setStartLocation([...currentLocation]); // Salvar localização inicial
-      alarmStartTimeRef.current = new Date(); // Salvar hora de início
-      toast.success('Alarme ativado! Monitorando sua localização...', {
-        icon: '🔔',
-      });
-      try {
-        await Haptics.impact({ style: ImpactStyle.Medium });
-      } catch (error) {
-        // Ignorar erro em ambiente web
+    setDestination([lat, lng]);
+    setAlarmTriggered(false);
+    
+    // Tentar obter endereço através de geocoding reverso
+    try {
+      if (typeof google !== 'undefined' && google.maps && google.maps.Geocoder) {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode(
+          { location: { lat, lng } },
+          (results, status) => {
+            if (status === 'OK' && results && results[0]) {
+              setDestinationAddress(results[0].formatted_address);
+              toast.success('Destino definido no mapa!');
+            } else {
+              setDestinationAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+            }
+          }
+        );
+      } else {
+        setDestinationAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
       }
-    } else {
-      setIsAlarmActive(false);
-      alarmStartTimeRef.current = null;
-      toast.info('Alarme desativado');
-      try {
-        await Haptics.impact({ style: ImpactStyle.Light });
-      } catch (error) {
-        // Ignorar erro em ambiente web
-      }
+    } catch (error) {
+      console.error('Error geocoding:', error);
+      setDestinationAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
     }
-  };
 
-  const handleRadiusChange = async (value: number) => {
-    setRadius(value);
-    // Atualizar raio favorito no perfil
-    updateFavoriteRadius(value);
+    // Haptic feedback
     try {
       await Haptics.impact({ style: ImpactStyle.Light });
     } catch (error) {
       // Ignorar erro em ambiente web
     }
-  };
+  }, [isAlarmActive]);
 
-  const handleAddressSelect = (lat: number, lng: number, address: string) => {
-    // Limpar destino anterior quando buscar novo endereço
-    setDestination(null);
+  // Handle address select from search
+  const handleAddressSelect = useCallback((lat: number, lng: number, address: string) => {
+    setSearchCenter([lat, lng]);
     setDestinationAddress('');
-    setSearchCenter([lat, lng]);
-    toast.success(`Endereço encontrado! Clique no mapa ou selecione para definir como destino.`, {
-      description: address,
-      duration: 5000,
-    });
-  };
+    toast.info('Endereço encontrado! Clique no mapa para definir como destino.');
+  }, []);
 
-  const handleMapCenterChange = (lat: number, lng: number) => {
-    setSearchCenter([lat, lng]);
-  };
-
-  const handleDestinationSelect = async (lat: number, lng: number, address: string) => {
+  // Handle destination select from search
+  const handleDestinationSelect = useCallback((lat: number, lng: number, address: string) => {
     setDestination([lat, lng]);
     setDestinationAddress(address);
-    setSearchCenter(null); // Limpar busca quando destino for definido
-    toast.success('Destino definido com sucesso!', {
-      description: address,
-      duration: 3000,
-    });
+    setAlarmTriggered(false);
+    toast.success('Destino definido com sucesso!');
+  }, []);
+
+  // Handle map center change
+  const handleMapCenterChange = useCallback((lat: number, lng: number) => {
+    setSearchCenter([lat, lng]);
+  }, []);
+
+  // Handle toggle alarm
+  const handleToggleAlarm = useCallback(async () => {
+    if (!destination) {
+      toast.error('Defina um destino antes de ativar o alarme');
+      return;
+    }
+
+    if (isAlarmActive) {
+      // Desativar alarme
+      setIsAlarmActive(false);
+      setAlarmTriggered(false);
+      alarmStartTimeRef.current = null;
+      toast.info('Alarme desativado');
+    } else {
+      // Ativar alarme
+      setIsAlarmActive(true);
+      setAlarmTriggered(false);
+      setStartLocation(currentLocation);
+      alarmStartTimeRef.current = new Date();
+      toast.success('Alarme ativado! Monitorando sua localização...');
+      
+      // Atualizar raio favorito no perfil
+      updateFavoriteRadius(radius);
+    }
+
+    // Haptic feedback
+    try {
+      await Haptics.impact({ style: ImpactStyle.Medium });
+    } catch (error) {
+      // Ignorar erro em ambiente web
+    }
+  }, [destination, isAlarmActive, currentLocation, radius, updateFavoriteRadius]);
+
+  // Handle radius change
+  const handleRadiusChange = useCallback(async (newRadius: number) => {
+    setRadius(newRadius);
+    
+    // Haptic feedback
     try {
       await Haptics.impact({ style: ImpactStyle.Light });
     } catch (error) {
       // Ignorar erro em ambiente web
     }
-  };
+  }, []);
 
-  const handleMapClick = async (lat: number, lng: number) => {
-    if (!isAlarmActive) {
-      setDestination([lat, lng]);
-      // Tentar obter endereço reverso (opcional)
-      setDestinationAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-      setSearchCenter(null); // Limpar busca quando definir destino no mapa
-      toast.success('Destino definido no mapa!');
-      try {
-        await Haptics.impact({ style: ImpactStyle.Light });
-      } catch (error) {
-        // Ignorar erro em ambiente web
-      }
+  // Handle save favorite
+  const handleSaveFavorite = useCallback(() => {
+    if (!destination || !destinationAddress) {
+      toast.error('Defina um destino antes de salvar como favorito');
+      return;
     }
-  };
-
-  const handleSaveFavorite = () => {
-    if (!destination || !destinationAddress) return;
-    setEditingFavorite(undefined);
     setShowFavoriteModal(true);
-  };
+    setEditingFavorite(undefined);
+  }, [destination, destinationAddress]);
 
-  const handleFavoriteSave = (favoriteData: Omit<FavoriteDestination, 'id' | 'createdAt' | 'updatedAt' | 'useCount'>) => {
+  // Handle favorite save
+  const handleFavoriteSave = useCallback((favoriteData: Omit<FavoriteDestination, 'id' | 'createdAt' | 'updatedAt' | 'useCount'>) => {
     if (editingFavorite) {
-      // Atualizar favorito existente
-      updateFavorite(editingFavorite.id, {
-        ...favoriteData,
-        location: favoriteData.location || editingFavorite.location,
-        address: favoriteData.address || editingFavorite.address,
-      });
+      updateFavorite(editingFavorite.id, favoriteData);
       toast.success('Favorito atualizado!');
     } else {
-      if (!destination || !destinationAddress) {
-        toast.error('Erro ao salvar favorito');
-        return;
-      }
       addFavorite({
         ...favoriteData,
-        location: destination,
-        address: destinationAddress,
-        radius: favoriteData.radius || radius,
+        location: destination!,
       });
       toast.success('Favorito salvo!');
     }
     setShowFavoriteModal(false);
     setEditingFavorite(undefined);
-  };
+  }, [editingFavorite, destination, addFavorite, updateFavorite]);
 
-  const handleFavoriteSelect = (favorite: FavoriteDestination) => {
+  // Handle favorite select
+  const handleFavoriteSelect = useCallback((favorite: FavoriteDestination) => {
     setDestination(favorite.location);
     setDestinationAddress(favorite.address);
-    if (favorite.radius) {
-      setRadius(favorite.radius);
-    }
-    incrementUseCount(favorite.id);
+    setRadius(favorite.radius);
+    setAlarmTriggered(false);
     setShowFavorites(false);
+    incrementUseCount(favorite.id);
     toast.success(`Destino "${favorite.name}" selecionado!`);
-  };
+  }, [incrementUseCount]);
 
-  const handleEditFavorite = (favorite: FavoriteDestination) => {
+  // Handle edit favorite
+  const handleEditFavorite = useCallback((favorite: FavoriteDestination) => {
     setEditingFavorite(favorite);
     setShowFavoriteModal(true);
-  };
+  }, []);
+
+  // Get map reference for centering
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const handleMapRef = useCallback((map: google.maps.Map | null) => {
+    mapRef.current = map;
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/30 p-4 pb-safe">
-      <div className="max-w-2xl mx-auto h-screen flex flex-col gap-4">
-        {/* Header com botões de ação */}
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/30 pb-safe">
+      {/* Header */}
+      <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border/50">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-foreground">Sonecaz</h1>
             {!isOnline && (
-              <span className="text-xs bg-yellow-500 text-white px-2 py-1 rounded-full" title="Modo Offline">
-                📴 Offline
+              <span className="px-2 py-1 text-xs bg-muted text-muted-foreground rounded-full">
+                Offline
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               onClick={() => setShowFavorites(!showFavorites)}
-              className="flex items-center gap-2"
+              className="relative"
             >
-              <Star className="w-4 h-4" />
-              <span className="hidden sm:inline">Favoritos</span>
+              <Star className="w-5 h-5" />
             </Button>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               onClick={() => navigate('/lists')}
-              className="flex items-center gap-2"
             >
-              <ListTodo className="w-4 h-4" />
-              <span className="hidden sm:inline">Listas</span>
-              {hasActiveShoppingItems().hasAny && (
-                <span className="ml-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
-                  !
-                </span>
-              )}
+              <ListTodo className="w-5 h-5" />
             </Button>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               onClick={() => navigate('/settings')}
-              className="flex items-center gap-2"
             >
-              <Settings className="w-4 h-4" />
+              <Settings className="w-5 h-5" />
             </Button>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               onClick={() => navigate('/profile')}
-              className="flex items-center gap-2"
+              className="relative"
             >
-              <Avatar className="w-6 h-6">
-                <AvatarImage src={profile.avatar} alt={profile.name} />
-                <AvatarFallback className="text-xs bg-primary text-primary-foreground">
-                  {profile.name.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2)}
+              <Avatar className="w-8 h-8">
+                <AvatarImage 
+                  src={authUser?.photoURL || profile.avatar} 
+                  alt={authUser?.name || profile.name} 
+                />
+                <AvatarFallback>
+                  {(authUser?.name || profile.name).charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
             </Button>
           </div>
         </div>
+      </div>
 
-        {/* Favorites Panel */}
-        {showFavorites && (
-          <div className="relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowFavorites(false)}
-              className="absolute top-2 right-2 z-10"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-            <FavoritesPanel
-              onSelectFavorite={handleFavoriteSelect}
-              onEditFavorite={handleEditFavorite}
-            />
-          </div>
-        )}
+      {/* Favorites Panel */}
+      {showFavorites && (
+        <div className="container mx-auto px-4 py-4">
+          <FavoritesPanel
+            onSelectFavorite={handleFavoriteSelect}
+            onEditFavorite={handleEditFavorite}
+          />
+        </div>
+      )}
 
-        {/* Map Section */}
-        <div className={cn("flex-1 rounded-2xl overflow-hidden shadow-xl border border-border/50 transition-all", showFavorites && "h-1/2")}>
+      {/* Map */}
+      <div className="container mx-auto px-4 py-4">
+        <div className="w-full h-[400px] md:h-[500px] lg:h-[600px] rounded-2xl overflow-hidden shadow-xl border border-border/50">
           <LocationMap
             center={currentLocation}
             destination={destination}
             radius={radius}
+            searchCenter={searchCenter}
             onMapClick={handleMapClick}
             onLocationUpdate={(lat, lng) => setCurrentLocation([lat, lng])}
-            searchCenter={searchCenter}
+            onMapRef={handleMapRef}
           />
         </div>
+      </div>
 
-        {/* Controls Section */}
-        <div className="pb-4">
-          <AlarmControls
-            isActive={isAlarmActive}
-            radius={radius}
-            destination={destination}
-            destinationAddress={destinationAddress}
-            onToggleAlarm={handleToggleAlarm}
-            onRadiusChange={handleRadiusChange}
-            distance={distance}
-            onAddressSelect={handleAddressSelect}
-            onDestinationSelect={handleDestinationSelect}
-            onMapCenterChange={handleMapCenterChange}
-            onSaveFavorite={handleSaveFavorite}
-            mapCenter={searchCenter || currentLocation}
-          />
-        </div>
+      {/* Controls */}
+      <div className="container mx-auto px-4 py-4">
+        <AlarmControls
+          isActive={isAlarmActive}
+          distance={distance}
+          radius={radius}
+          destinationAddress={destinationAddress}
+          onToggleAlarm={handleToggleAlarm}
+          onRadiusChange={handleRadiusChange}
+          onAddressSelect={handleAddressSelect}
+          onDestinationSelect={handleDestinationSelect}
+          onMapCenterChange={handleMapCenterChange}
+          mapCenter={searchCenter || currentLocation}
+          onSaveFavorite={handleSaveFavorite}
+        />
+      </div>
 
-        {/* Favorite Modal */}
+      {/* Favorite Modal */}
+      {showFavoriteModal && (
         <FavoriteModal
           open={showFavoriteModal}
           onClose={() => {
@@ -989,18 +1036,15 @@ const Index = () => {
           }}
           onSave={handleFavoriteSave}
           initialData={destination && destinationAddress ? {
-            name: destinationAddress.split(',')[0] || 'Novo Favorito',
+            name: destinationAddress.split(',')[0] || 'Destino',
             address: destinationAddress,
             location: destination,
             radius,
           } : undefined}
           favorite={editingFavorite}
         />
-      </div>
+      )}
     </div>
   );
-};
-
-export default Index;
-
+}
 

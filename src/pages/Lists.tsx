@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useLists } from '@/hooks/useLists';
 import TodoList from '@/components/TodoList';
-import { ShoppingCart, Pill, ListTodo, ArrowLeft } from 'lucide-react';
+import { ShoppingCart, ListTodo, ArrowLeft } from 'lucide-react';
 import { TodoItem, ShoppingItem } from '@/types/list';
 import { Button } from '@/components/ui/button';
 

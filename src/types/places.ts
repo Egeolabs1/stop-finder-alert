@@ -107,3 +107,4 @@ export const getCategoryName = (category: PlaceCategory): string => {
   return PLACE_CATEGORIES[category]?.name || category;
 };
 
+

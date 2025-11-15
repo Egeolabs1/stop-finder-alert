@@ -1,20 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, User, Mail, Calendar, Bell, ShoppingCart, Radio, Edit2, Save, X, Clock, History } from 'lucide-react';
+import { ArrowLeft, User, Mail, Calendar, Bell, ShoppingCart, Radio, Edit2, Save, X, Clock, History, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProfile } from '@/hooks/useProfile';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Profile = () => {
   const navigate = useNavigate();
   const { profile, isLoading, updateProfile } = useProfile();
+  const { user: authUser, signOut, updateProfile: updateAuthProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(profile.name);
   const [editedEmail, setEditedEmail] = useState(profile.email || '');
+  const hasSyncedRef = useRef(false);
 
   // Atualizar estados quando o perfil carregar
   useEffect(() => {
@@ -22,13 +25,53 @@ const Profile = () => {
       setEditedName(profile.name);
       setEditedEmail(profile.email || '');
     }
-  }, [isLoading, profile]);
+  }, [isLoading, profile.name, profile.email]);
 
-  const handleSave = () => {
+  // Sincronizar dados de autenticação com perfil local (apenas uma vez por usuário)
+  useEffect(() => {
+    if (authUser && !isLoading && !hasSyncedRef.current) {
+      // Atualizar campos de edição com dados de autenticação
+      if (authUser.name) {
+        setEditedName(authUser.name);
+      }
+      if (authUser.email) {
+        setEditedEmail(authUser.email);
+      }
+      
+      // Marcar como sincronizado
+      hasSyncedRef.current = true;
+    }
+    
+    // Resetar quando o usuário mudar ou fizer logout
+    if (!authUser) {
+      hasSyncedRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id, isLoading]); // Sincronizar apenas quando o usuário autenticado mudar ou carregar
+
+  const handleSave = async () => {
+    const name = editedName.trim() || 'Usuário';
+    const email = editedEmail.trim() || undefined;
+
+    // Atualizar perfil local
     updateProfile({
-      name: editedName.trim() || 'Usuário',
-      email: editedEmail.trim() || undefined,
+      name,
+      email,
     });
+
+    // Atualizar perfil de autenticação se usuário estiver autenticado
+    if (authUser) {
+      try {
+        await updateAuthProfile({ name });
+        if (email && email !== authUser.email) {
+          // Email será atualizado via método específico se necessário
+          console.log('Email update requires re-authentication');
+        }
+      } catch (error) {
+        console.error('Error updating auth profile:', error);
+      }
+    }
+
     setIsEditing(false);
     toast.success('Perfil atualizado!');
   };
@@ -234,10 +277,56 @@ const Profile = () => {
           </div>
         </Card>
 
+        {/* Autenticação */}
+        {authUser && (
+          <Card className="p-6">
+            <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2">
+              <User className="w-5 h-5 text-primary" />
+              Conta
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Método de login</span>
+                <span className="text-sm font-medium text-foreground capitalize">
+                  {authUser.provider === 'google' ? 'Google' : 
+                   authUser.provider === 'email' ? 'Email' : 
+                   'Anônimo'}
+                </span>
+              </div>
+              {authUser.emailVerified && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Email verificado</span>
+                  <span className="text-sm font-medium text-success">✓ Verificado</span>
+                </div>
+              )}
+              <Button
+                variant="destructive"
+                className="w-full mt-4"
+                onClick={async () => {
+                  try {
+                    await signOut();
+                    toast.success('Logout realizado com sucesso!');
+                    navigate('/login');
+                  } catch (error) {
+                    toast.error('Erro ao fazer logout');
+                  }
+                }}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sair da Conta
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* Informações */}
         <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
           <p className="text-sm text-blue-900 dark:text-blue-100">
-            💡 <strong>Dica:</strong> Seu perfil é salvo localmente no seu dispositivo. As estatísticas são atualizadas automaticamente quando você usa o app.
+            💡 <strong>Dica:</strong> {
+              authUser 
+                ? 'Seu perfil está sincronizado. As estatísticas são atualizadas automaticamente quando você usa o app.'
+                : 'Seu perfil é salvo localmente no seu dispositivo. Faça login para sincronizar seus dados em todos os dispositivos.'
+            }
           </p>
         </Card>
       </div>
@@ -246,4 +335,3 @@ const Profile = () => {
 };
 
 export default Profile;
-

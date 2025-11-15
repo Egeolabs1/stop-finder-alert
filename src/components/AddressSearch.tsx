@@ -1,8 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, X, MapPin } from 'lucide-react';
+import { Search, X, MapPin, Mic, History as HistoryIcon, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDebounce } from '@/hooks/useDebounce';
+import { 
+  saveSearchHistory, 
+  getSearchHistory, 
+  clearSearchHistory, 
+  removeSearchHistoryItem,
+  startVoiceSearch,
+  isVoiceSearchAvailable,
+  searchByCoordinates
+} from '@/services/searchService';
+import { debounce } from '@/utils/debounce';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
@@ -91,31 +102,25 @@ const AddressSearch = ({
     []
   );
 
-  // Debounce para busca - só buscar após o usuário parar de digitar
+  // Debounce para busca usando o hook useDebounce
+  const debouncedSearch = useDebounce(searchValue, 600);
+
   useEffect(() => {
     // Limpar sugestões imediatamente se o campo estiver vazio
-    if (!searchValue.trim()) {
+    if (!debouncedSearch.trim()) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
 
     // Aguardar pelo menos 3 caracteres antes de buscar
-    if (searchValue.trim().length < 3) {
+    if (debouncedSearch.trim().length >= 3) {
+      searchAddresses(debouncedSearch);
+    } else {
       setSuggestions([]);
       setShowSuggestions(false);
-      return;
     }
-
-    // Debounce aumentado para 600ms para dar tempo do usuário digitar
-    const timer = setTimeout(() => {
-      if (searchValue.trim().length >= 3) {
-        searchAddresses(searchValue);
-      }
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [searchValue, searchAddresses]);
+  }, [debouncedSearch, searchAddresses]);
 
   // Buscar detalhes do lugar selecionado
   const getPlaceDetails = useCallback(

@@ -228,4 +228,3 @@ const RecurringAlarms = () => {
 };
 
 export default RecurringAlarms;
-

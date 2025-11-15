@@ -51,7 +51,7 @@ const TodoList = ({
     switch (type) {
       case 'shopping':
         return <ShoppingCart className="w-4 h-4" />;
-      case 'pharmacy':
+      case 'places':
         return <Pill className="w-4 h-4" />;
       default:
         return <ListTodo className="w-4 h-4" />;
@@ -86,7 +86,7 @@ const TodoList = ({
             value={newItemText}
             onChange={(e) => setNewItemText(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder={`Adicionar ${type === 'shopping' ? 'item' : type === 'pharmacy' ? 'medicamento' : 'tarefa'}...`}
+            placeholder={`Adicionar ${type === 'shopping' ? 'item' : type === 'places' ? 'local' : 'tarefa'}...`}
             className="flex-1"
             autoFocus
           />

@@ -203,4 +203,3 @@ export const es = {
   'days.sat': 'Sáb',
   'days.sun': 'Dom',
 };
-

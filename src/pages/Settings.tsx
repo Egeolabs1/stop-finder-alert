@@ -4,14 +4,22 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Settings as SettingsIcon, Bell, Radio, Calendar } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ArrowLeft, Settings as SettingsIcon, Bell, Radio, Calendar, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSettings } from '@/hooks/useSettings';
+import { useSettings, AlarmSoundType } from '@/hooks/useSettings';
 import { useCommuteMode } from '@/hooks/useCommuteMode';
 import CommuteSettings from '@/components/CommuteSettings';
 import PlaceFilters from '@/components/PlaceFilters';
 import LanguageSelector from '@/components/LanguageSelector';
 import { useTranslation } from '@/hooks/useTranslation';
+import { getAlarmSoundName, getAlarmSoundDescription, playAlarmSound } from '@/utils/alarmSounds';
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -111,6 +119,46 @@ const Settings = () => {
               />
               <p className="text-xs text-muted-foreground">
                 Raio de ativação padrão quando você define um destino
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="alarmSound" className="text-sm font-medium">
+                  Som do alarme
+                </Label>
+              </div>
+              <Select
+                value={settings.alarmSound}
+                onValueChange={(value: AlarmSoundType) => {
+                  handleUpdateSetting('alarmSound', value);
+                  // Tocar uma prévia do som escolhido
+                  playAlarmSound(value).catch(console.error);
+                }}
+              >
+                <SelectTrigger id="alarmSound" className="w-full">
+                  <SelectValue>
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="w-4 h-4" />
+                      <span>{getAlarmSoundName(settings.alarmSound)}</span>
+                    </div>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {(['beep', 'buzzer', 'bell', 'alert', 'chime'] as AlarmSoundType[]).map((sound) => (
+                    <SelectItem key={sound} value={sound}>
+                      <div className="flex flex-col">
+                        <span>{getAlarmSoundName(sound)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {getAlarmSoundDescription(sound)}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Escolha o som que será reproduzido quando você chegar ao destino
               </p>
             </div>
           </div>
@@ -306,4 +354,3 @@ const Settings = () => {
 };
 
 export default Settings;
-

@@ -157,4 +157,3 @@ export const useRecurringAlarms = () => {
     getNextAlarm,
   };
 };
-

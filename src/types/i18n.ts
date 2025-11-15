@@ -30,3 +30,7 @@ export const SUPPORTED_LANGUAGES: LanguageConfig[] = [
 
 export type TranslationKey = string;
 
+
+
+
+
