@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Bell, BellOff, MapPin, Star } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import AddressSearch from '@/components/AddressSearch';
 
 interface AlarmControlsProps {

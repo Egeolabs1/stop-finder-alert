@@ -104,8 +104,27 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+// Verificar se o esquema da URL é suportado para cache
+// Deve estar antes das funções que a usam
+function isCacheableScheme(url) {
+  const unsupportedSchemes = ['chrome-extension:', 'moz-extension:', 'safari-extension:', 'edge:', 'opera:'];
+  return !unsupportedSchemes.some(scheme => url.protocol.startsWith(scheme));
+}
+
 // Estratégia: Cache First
 async function cacheFirst(request, cacheName) {
+  const url = new URL(request.url);
+  
+  // Ignorar esquemas não suportados (extensões do navegador)
+  if (!isCacheableScheme(url)) {
+    try {
+      return await fetch(request);
+    } catch (error) {
+      console.warn('[Service Worker] Fetch failed for unsupported scheme:', url.protocol);
+      throw error;
+    }
+  }
+
   const cached = await caches.match(request);
   if (cached) {
     return cached;
@@ -113,7 +132,7 @@ async function cacheFirst(request, cacheName) {
 
   try {
     const response = await fetch(request);
-    if (response.status === 200) {
+    if (response.status === 200 && isCacheableScheme(url)) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
@@ -131,9 +150,21 @@ async function cacheFirst(request, cacheName) {
 
 // Estratégia: Network First
 async function networkFirst(request, cacheName) {
+  const url = new URL(request.url);
+  
+  // Ignorar esquemas não suportados (extensões do navegador)
+  if (!isCacheableScheme(url)) {
+    try {
+      return await fetch(request);
+    } catch (error) {
+      console.warn('[Service Worker] Fetch failed for unsupported scheme:', url.protocol);
+      throw error;
+    }
+  }
+
   try {
     const response = await fetch(request);
-    if (response.status === 200) {
+    if (response.status === 200 && isCacheableScheme(url)) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
