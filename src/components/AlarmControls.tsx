@@ -1,8 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { Bell, BellOff, MapPin, Radio, Star } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Bell, BellOff, MapPin, Star } from 'lucide-react';
 import AddressSearch from '@/components/AddressSearch';
 
 interface AlarmControlsProps {
@@ -38,18 +37,6 @@ const AlarmControls = ({
     <Card className="p-6 space-y-6 bg-card/95 backdrop-blur-sm shadow-lg border-border/50">
       {/* Header */}
       <div className="text-center space-y-2">
-        <div className="flex items-center justify-center gap-3">
-          <div className={cn(
-            "p-3 rounded-full transition-all duration-300",
-            isActive ? "bg-success/20 animate-pulse" : "bg-muted"
-          )}>
-            {isActive ? (
-              <Radio className="w-6 h-6 text-success" />
-            ) : (
-              <Bell className="w-6 h-6 text-muted-foreground" />
-            )}
-          </div>
-        </div>
         <p className="text-sm text-muted-foreground">
           {isActive 
             ? "Monitorando sua localização..." 
@@ -160,3 +147,4 @@ const AlarmControls = ({
 };
 
 export default AlarmControls;
+

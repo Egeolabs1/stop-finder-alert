@@ -935,6 +935,16 @@ export default function Index() {
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-foreground">Sonecaz</h1>
+            <div className={cn(
+              "p-2 rounded-full transition-all duration-300",
+              isAlarmActive ? "bg-success/20 animate-pulse" : "bg-muted/50"
+            )}>
+              {isAlarmActive ? (
+                <Bell className="w-5 h-5 text-success" />
+              ) : (
+                <Bell className="w-5 h-5 text-muted-foreground" />
+              )}
+            </div>
             {!isOnline && (
               <span className="px-2 py-1 text-xs bg-muted text-muted-foreground rounded-full">
                 Offline
