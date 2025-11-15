@@ -2,9 +2,9 @@
  * Service Worker para cache de assets e funcionalidades offline
  */
 
-const CACHE_NAME = 'sonecaz-v1';
-const STATIC_CACHE = 'sonecaz-static-v1';
-const DYNAMIC_CACHE = 'sonecaz-dynamic-v1';
+const CACHE_NAME = 'sonecaz-v2';
+const STATIC_CACHE = 'sonecaz-static-v2';
+const DYNAMIC_CACHE = 'sonecaz-dynamic-v2';
 
 // Assets para cache estático
 const STATIC_ASSETS = [
@@ -75,6 +75,13 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Ignorar completamente requisições de extensões do navegador
+  const unsupportedSchemes = ['chrome-extension:', 'moz-extension:', 'safari-extension:', 'edge:', 'opera:'];
+  if (unsupportedSchemes.some(scheme => url.protocol.startsWith(scheme))) {
+    // Não processar essas requisições - deixar o navegador lidar com elas
+    return;
+  }
+
   // Estratégia: Cache First para assets estáticos, Network First para dados dinâmicos
   if (request.method === 'GET') {
     // Assets estáticos (JS, CSS, imagens)
@@ -133,8 +140,20 @@ async function cacheFirst(request, cacheName) {
   try {
     const response = await fetch(request);
     if (response.status === 200 && isCacheableScheme(url)) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+      try {
+        const cache = await caches.open(cacheName);
+        // Verificação adicional antes de tentar cache.put
+        if (url.protocol === 'http:' || url.protocol === 'https:') {
+          await cache.put(request, response.clone());
+        }
+      } catch (cacheError) {
+        // Ignorar erros de cache silenciosamente para esquemas não suportados
+        if (cacheError.message && cacheError.message.includes('scheme')) {
+          console.warn('[Service Worker] Cannot cache unsupported scheme:', url.protocol);
+        } else {
+          console.warn('[Service Worker] Cache error:', cacheError);
+        }
+      }
     }
     return response;
   } catch (error) {
@@ -165,8 +184,20 @@ async function networkFirst(request, cacheName) {
   try {
     const response = await fetch(request);
     if (response.status === 200 && isCacheableScheme(url)) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+      try {
+        const cache = await caches.open(cacheName);
+        // Verificação adicional antes de tentar cache.put
+        if (url.protocol === 'http:' || url.protocol === 'https:') {
+          await cache.put(request, response.clone());
+        }
+      } catch (cacheError) {
+        // Ignorar erros de cache silenciosamente para esquemas não suportados
+        if (cacheError.message && cacheError.message.includes('scheme')) {
+          console.warn('[Service Worker] Cannot cache unsupported scheme:', url.protocol);
+        } else {
+          console.warn('[Service Worker] Cache error:', cacheError);
+        }
+      }
     }
     return response;
   } catch (error) {
